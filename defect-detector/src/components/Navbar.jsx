@@ -4,7 +4,8 @@ const Navbar = () => {
 
     const links = [
         { name: "Home", link: "/" },
-        { name: "Training", link: "/training" }
+        { name: "Training", link: "/training" },
+        { name: "Calibration", link: "/calibration" }
     ];
 
     return (
