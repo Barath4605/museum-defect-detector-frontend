@@ -1,0 +1,108 @@
+JEPA API JSON Response Formats
+This document describes the JSON return formats for all API endpoints available in the JEPA Exhibit Defect Detection backend.
+
+1. Static Information Endpoints
+Root Endpoint
+GET /
+
+Response:
+json
+{
+  "service": "JEPA Exhibit Defect Detector API",
+  "version": "2.0.0",
+  "status": "ok"
+}
+System Status
+GET /api/system-status
+
+Response:
+json
+{
+  "temporal_trained": true,
+  "spatial_trained": true,
+  "energy_trained": true,
+  "calibrated": true,
+  "device": "cuda"
+}
+Calibration Status
+GET /api/calibration-status
+
+Response:
+json
+{
+  "threshold": 1.0,
+  "t_scale": 1.0,
+  "t_long_scale": 1.0,
+  "s_scale": 1.0,
+  "e_scale": 1.0
+}
+2. Training Endpoints
+Training Status Poll
+GET /api/train/status
+
+Response:
+json
+{
+  "trained": true,
+  "energy_trained": true,
+  "loss_history": [0.5, 0.4, 0.35, ...]
+}
+Start Training (SSE Stream)
+POST /api/train
+
+Events:
+{"type": "log", "msg": "... message ..."}
+{"type": "progress_a", "epoch": 1, "total": 30, "loss": 0.123456}
+{"type": "stage_a_done", "final_loss": 0.05, "loss_history": [...]}
+{"type": "progress_b", "epoch": 1, "total": 20, "loss": 0.012345}
+{"type": "done", "jepa_loss": 0.05, "svdd_loss": 0.01, "video_stem": "video_filename"}
+{"type": "error", "msg": "error message", "trace": "... stack trace ..."}
+{"type": "stream_end"}
+3. Calibration & Detection Endpoints (SSE Streams)
+Run Calibration
+POST /api/calibrate
+
+Events:
+{"type": "log", "msg": "... message ..."}
+{"type": "progress", "current": 100, "total": 2000}
+{"type": "done", "threshold": 0.85, "t_scale": 1.1, "t_long_scale": 1.0, "s_scale": 0.9, "e_scale": 1.0, "scores": [...]}
+Run Detection
+POST /api/detect
+
+Events:
+{"type": "log", "msg": "... message ..."}
+{"type": "threshold", "value": 0.85}
+{"type": "frame", "frame_idx": 5, "score": 0.12, "is_anomaly": false, "temporal": 0.05, "temporal_long": 0.02, "spatial": 0.03, "energy": 0.01, "uncertainty": 0.005, "total_est": 120, "frame_b64": "... (optional) ..."}
+{"type": "done", "total_frames": 120}
+4. WebSocket Live Stream
+Webcam Detection
+WS /ws/webcam
+
+Client Configuration (Initial message):
+json
+{
+  "cam_index": 0,
+  "analyze_every": 2,
+  "mask_humans": true,
+  "threshold_override": 0.0
+}
+Server Message (Per analyzed frame):
+json
+{
+  "type": "frame",
+  "frame_idx": 10,
+  "score": 0.15,
+  "is_anomaly": false,
+  "temporal": 0.06,
+  "temporal_long": 0.02,
+  "spatial": 0.04,
+  "energy": 0.02,
+  "uncertainty": 0.01,
+  "frame_b64": "data:image/jpeg;base64,..."
+}
+Error Message:
+json
+{
+  "type": "error",
+  "msg": "error message"
+}
