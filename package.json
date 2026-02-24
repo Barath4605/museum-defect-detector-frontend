@@ -1,0 +1,17 @@
+{
+  "name": "defect-detector-frontend",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "private": true,
+  "dependencies": {
+    "@tailwindcss/vite": "^4.2.0",
+    "lucide-react": "^0.575.0",
+    "recharts": "^3.7.0",
+    "tailwindcss": "^4.2.0",
+    "vite": "^7.3.1"
+  }
+}
