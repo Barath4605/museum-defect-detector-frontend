@@ -1,0 +1,32 @@
+@import "tailwindcss";
+.ibm-mono {
+    font-family: 'IBM Plex Mono', monospace;
+}
+
+.montserrat {
+    font-family: 'Montserrat', sans-serif;
+}
+
+.mulish {
+    font-family: 'Mulish', sans-serif;
+}
+
+.roboto-flex {
+    font-family: 'Roboto Flex', sans-serif;
+}
+
+/* Background */
+.bg-oxford-blue { background-color: #002147; }
+.bg-tan { background-color: #d2b48c; }
+
+/* Text */
+.text-oxford-blue { color: #002147; }
+.text-tan { color: #d2b48c; }
+
+/* Border */
+.border-oxford-blue { border-color: #002147; }
+.border-tan { border-color: #d2b48c; }
+
+/* Hover states */
+.hover\:bg-oxford-blue:hover { background-color: #002147; }
+.hover\:bg-tan:hover { background-color: #d2b48c; }
