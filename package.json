@@ -1,12 +1,12 @@
 {
   "name": "defect-detector-frontend",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
   "private": true,
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
   "dependencies": {
     "@tailwindcss/vite": "^4.2.0",
     "lucide-react": "^0.575.0",

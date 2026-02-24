@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import {
     BarChart,
     Bar,
@@ -12,76 +12,98 @@ import {
 
 const Calibration = () => {
     const [loading, setLoading] = useState(false);
-    const [isPolling, setIsPolling] = useState(false);
 
     const [threshold, setThreshold] = useState(null);
     const [tScale, setTScale] = useState(null);
+    const [tLongScale, setTLongScale] = useState(null);
     const [sScale, setSScale] = useState(null);
     const [eScale, setEScale] = useState(null);
     const [scores, setScores] = useState([]);
 
-    useEffect(() => {
-        if (!isPolling) return;
-
-        const interval = setInterval(async () => {
-            try {
-                const res = await fetch("http://localhost:5000/api/calibration-status");
-                const data = await res.json();
-
-                if (data.threshold) {
-                    setThreshold(data.threshold);
-                    setTScale(data.t_scale);
-                    setSScale(data.s_scale);
-                    setEScale(data.e_scale);
-                    setScores(data.scores || []);
-
-                    clearInterval(interval);
-                    setIsPolling(false);
-                    setLoading(false);
-                }
-            } catch (err) {
-                console.error("Calibration polling error:", err);
-                clearInterval(interval);
-                setIsPolling(false);
-                setLoading(false);
-            }
-        }, 2000);
-
-        return () => clearInterval(interval);
-    }, [isPolling]);
-
     const handleCalibration = async () => {
-        try {
-            setLoading(true);
-            setThreshold(null);
-            setScores([]);
+        setLoading(true);
+        setThreshold(null);
+        setScores([]);
 
+        try {
             const response = await fetch("http://localhost:5000/api/calibrate", {
                 method: "POST"
             });
 
             if (!response.ok) throw new Error("Calibration failed");
 
-            setIsPolling(true);
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder("utf-8");
+
+            let buffer = "";
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                buffer += decoder.decode(value, { stream: true });
+
+                const events = buffer.split("\n\n");
+                buffer = events.pop();
+
+                for (const event of events) {
+                    if (!event.startsWith("data:")) continue;
+
+                    const jsonString = event.replace("data:", "").trim();
+
+                    try {
+                        const data = JSON.parse(jsonString);
+
+                        if (data.type === "progress") {
+                            console.log("Calibration progress:", data.current, "/", data.total);
+                        }
+
+                        if (data.type === "done") {
+                            setThreshold(data.threshold);
+                            setTScale(data.t_scale);
+                            setTLongScale(data.t_long_scale);
+                            setSScale(data.s_scale);
+                            setEScale(data.e_scale);
+                            setScores(data.scores || []);
+                            setLoading(false);
+                        }
+
+                        if (data.type === "error") {
+                            console.error("Calibration error:", data.msg);
+                            setLoading(false);
+                            return;
+                        }
+
+                    } catch (err) {
+                        console.error("SSE parse error:", err);
+                    }
+                }
+            }
+
         } catch (err) {
             console.error(err);
             setLoading(false);
         }
     };
 
-    const createHistogram = (data, binSize = 5) => {
+    const createHistogram = (data, binCount = 20) => {
         if (!data.length) return [];
 
         const min = Math.min(...data);
         const max = Math.max(...data);
+        const binSize = (max - min) / binCount;
 
         const bins = [];
 
-        for (let start = min; start <= max; start += binSize) {
+        for (let i = 0; i < binCount; i++) {
+            const start = min + i * binSize;
+            const end = start + binSize;
+
             bins.push({
-                range: `${start.toFixed(0)}-${(start + binSize).toFixed(0)}`,
-                count: data.filter(v => v >= start && v < start + binSize).length,
-                start
+                range: `${start.toFixed(2)}-${end.toFixed(2)}`,
+                count: data.filter(v => v >= start && v < end).length,
+                start,
+                end
             });
         }
 
@@ -98,7 +120,7 @@ const Calibration = () => {
                 </h1>
 
                 <p className="w-full sm:w-[80%] lg:w-[40%] text-sm sm:text-lg my-2">
-                    Runs trained models on normal embeddings and computes the 97th percentile threshold.
+                    Computes 97th percentile threshold from normal embeddings.
                 </p>
 
                 <button
@@ -109,8 +131,8 @@ const Calibration = () => {
                     {loading ? "Calibrating..." : "Run Calibration"}
                 </button>
 
-                {threshold && (
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-6 my-6 text-center">
+                {threshold !== null && (
+                    <div className="grid grid-cols-2 md:grid-cols-5 gap-6 my-6 text-center">
                         <div>
                             <p className="text-sm opacity-70">Threshold</p>
                             <p className="text-2xl">{threshold.toFixed(4)}</p>
@@ -118,6 +140,10 @@ const Calibration = () => {
                         <div>
                             <p className="text-sm opacity-70">t_scale</p>
                             <p className="text-2xl">{tScale?.toFixed(4)}</p>
+                        </div>
+                        <div>
+                            <p className="text-sm opacity-70">t_long</p>
+                            <p className="text-2xl">{tLongScale?.toFixed(4)}</p>
                         </div>
                         <div>
                             <p className="text-sm opacity-70">s_scale</p>
@@ -139,13 +165,18 @@ const Calibration = () => {
                                 <YAxis />
                                 <Tooltip />
                                 <Bar dataKey="count" fill="#3182ce" />
-                                <ReferenceLine
-                                    x={histogramData.find(
-                                        b => threshold >= b.start && threshold < b.start + 5
-                                    )?.range}
-                                    stroke="red"
-                                    strokeDasharray="4 4"
-                                />
+
+                                {threshold !== null && (
+                                    <ReferenceLine
+                                        x={
+                                            histogramData.find(
+                                                b => threshold >= b.start && threshold < b.end
+                                            )?.range
+                                        }
+                                        stroke="red"
+                                        strokeDasharray="4 4"
+                                    />
+                                )}
                             </BarChart>
                         </ResponsiveContainer>
                     </div>

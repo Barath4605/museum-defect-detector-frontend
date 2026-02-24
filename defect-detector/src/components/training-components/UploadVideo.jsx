@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useRef } from "react";
 import "../../index.css";
 import {
   LineChart,
@@ -10,46 +10,15 @@ import {
   ResponsiveContainer
 } from "recharts";
 
-const MAX_SIZE = 200 * 1024 * 1024; // 200MB
+const MAX_SIZE = 200 * 1024 * 1024;
 
 const UploadVideo = () => {
   const [video, setVideo] = useState(null);
   const [loading, setLoading] = useState(false);
-
   const [lossHistory, setLossHistory] = useState([]);
   const [trained, setTrained] = useState(false);
-  const [isPolling, setIsPolling] = useState(false);
 
   const inputRef = useRef(null);
-
-  // Poll training status
-  useEffect(() => {
-    if (!isPolling) return;
-
-    const interval = setInterval(async () => {
-      try {
-        const res = await fetch("http://localhost:5000/api/train/status");
-        const data = await res.json();
-
-        setTrained(data.trained);
-
-        if (data.lossHistory) {
-          setLossHistory(data.lossHistory);
-        }
-
-        if (data.trained) {
-          clearInterval(interval);
-          setIsPolling(false);
-        }
-      } catch (err) {
-        console.error("Polling error:", err);
-        clearInterval(interval);
-        setIsPolling(false);
-      }
-    }, 2000);
-
-    return () => clearInterval(interval);
-  }, [isPolling]);
 
   const handleChange = (e) => {
     const file = e.target.files[0];
@@ -76,14 +45,14 @@ const UploadVideo = () => {
       return;
     }
 
+    setLoading(true);
+    setLossHistory([]);
+    setTrained(false);
+
     const formData = new FormData();
     formData.append("video", video);
 
     try {
-      setLoading(true);
-      setTrained(false);
-      setLossHistory([]);
-
       const response = await fetch("http://localhost:5000/api/train", {
         method: "POST",
         body: formData,
@@ -91,7 +60,47 @@ const UploadVideo = () => {
 
       if (!response.ok) throw new Error("Upload failed");
 
-      setIsPolling(true);
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder("utf-8");
+
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+
+        const events = buffer.split("\n\n");
+        buffer = events.pop(); // keep incomplete chunk
+
+        for (const event of events) {
+          if (!event.startsWith("data:")) continue;
+
+          const jsonString = event.replace("data:", "").trim();
+
+          try {
+            const data = JSON.parse(jsonString);
+
+            if (data.type === "progress_a" || data.type === "progress_b") {
+              setLossHistory((prev) => [...prev, data.loss]);
+            }
+
+            if (data.type === "done") {
+              setTrained(true);
+            }
+
+            if (data.type === "error") {
+              console.error("Training error:", data.msg);
+              setLoading(false);
+              return;
+            }
+
+          } catch (err) {
+            console.error("SSE parse error:", err);
+          }
+        }
+      }
 
     } catch (err) {
       console.error(err);
@@ -101,7 +110,7 @@ const UploadVideo = () => {
     }
   };
 
-  const chartData = (lossHistory || []).map((loss, index) => ({
+  const chartData = lossHistory.map((loss, index) => ({
     epoch: index + 1,
     loss: loss
   }));
@@ -148,7 +157,7 @@ const UploadVideo = () => {
           </button>
         </div>
 
-        {trained && lossHistory.length > 0 && (
+        {lossHistory.length > 0 && (
             <div className="w-full h-96 mt-10 px-6">
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={chartData}>
