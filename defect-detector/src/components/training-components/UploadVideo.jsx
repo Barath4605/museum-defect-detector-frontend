@@ -129,6 +129,9 @@ const UploadVideo = () => {
         if (status.trained) {
           setTrained(true);
         }
+
+        inputRef.current.value = "";
+        setVideo(null);
       }
 
     } catch (err) {
