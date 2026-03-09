@@ -70,6 +70,8 @@ const UploadVideo = () => {
     const formData = new FormData();
     formData.append("video", video);
 
+    let trainingFinished = false;
+
     try {
       const response = await fetch("http://localhost:5000/api/train", {
         method: "POST",
@@ -107,12 +109,25 @@ const UploadVideo = () => {
             }
 
             if (data.type === "done") {
-              await fetchTrainingStatus();
+              trainingFinished = true;
             }
 
           } catch (err) {
             console.error("SSE parse error:", err);
           }
+        }
+      }
+
+      if (trainingFinished) {
+        const res = await fetch("http://localhost:5000/api/train/status");
+        const status = await res.json();
+
+        if (status.loss_history) {
+          setLossHistory(status.loss_history);
+        }
+
+        if (status.trained) {
+          setTrained(true);
         }
       }
 
@@ -123,7 +138,6 @@ const UploadVideo = () => {
       setLoading(false);
     }
   };
-
   const chartData = lossHistory.map((loss, index) => ({
     epoch: index + 1,
     loss: loss
