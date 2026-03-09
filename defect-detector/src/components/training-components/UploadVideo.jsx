@@ -39,6 +39,24 @@ const UploadVideo = () => {
     setVideo(file);
   };
 
+  const fetchTrainingStatus = async () => {
+    try {
+      const res = await fetch("http://localhost:5000/api/train/status");
+      const data = await res.json();
+
+      if (data.loss_history) {
+        setLossHistory(data.loss_history);
+      }
+
+      if (data.trained) {
+        setTrained(true);
+      }
+
+    } catch (err) {
+      console.error("Status fetch error:", err);
+    }
+  };
+
   const handleUpload = async () => {
     if (!video) {
       alert("Select a video first");
@@ -72,7 +90,7 @@ const UploadVideo = () => {
         buffer += decoder.decode(value, { stream: true });
 
         const events = buffer.split("\n\n");
-        buffer = events.pop(); // keep incomplete chunk
+        buffer = events.pop();
 
         for (const event of events) {
           if (!event.startsWith("data:")) continue;
@@ -82,18 +100,14 @@ const UploadVideo = () => {
           try {
             const data = JSON.parse(jsonString);
 
-            if (data.type === "progress_a" || data.type === "progress_b") {
-              setLossHistory((prev) => [...prev, data.loss]);
-            }
-
-            if (data.type === "done") {
-              setTrained(true);
-            }
-
             if (data.type === "error") {
               console.error("Training error:", data.msg);
               setLoading(false);
               return;
+            }
+
+            if (data.type === "done") {
+              await fetchTrainingStatus();
             }
 
           } catch (err) {
@@ -117,17 +131,15 @@ const UploadVideo = () => {
 
   return (
       <section>
-        <div
-            className="
-          flex flex-col
-          w-full min-h-screen
-          px-6 py-12
-          bg-oxford-blue text-tan
-          items-center justify-center
-          text-center
-          border-b border-tan
-        "
-        >
+        <div className="
+        flex flex-col
+        w-full min-h-screen
+        px-6 py-12
+        bg-oxford-blue text-tan
+        items-center justify-center
+        text-center
+        border-b border-tan
+      ">
           <h2 className="text-3xl sm:text-4xl lg:text-5xl font-semibold montserrat">
             Upload Video
           </h2>
@@ -157,7 +169,7 @@ const UploadVideo = () => {
           </button>
         </div>
 
-        {lossHistory.length > 0 && (
+        {trained && lossHistory.length > 0 && (
             <div className="w-full h-96 mt-10 px-6">
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={chartData}>
