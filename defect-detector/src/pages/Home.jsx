@@ -5,14 +5,14 @@ import SlideShow from "../components/homepage-components/SlideShow.jsx";
 import Navbar from "../components/Navbar.jsx";
 
 const Home = () => {
-  return (
-      <>
-          <Navbar />
-          <Landing />
-          <Flowchart />
-          <SlideShow />
-      </>
-  );
+    return (
+        <>
+            <Navbar />
+            <Landing />
+            <Flowchart />
+            <SlideShow />
+        </>
+    );
 };
 
 export default Home;

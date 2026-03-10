@@ -10,6 +10,8 @@ import {
     ReferenceLine
 } from "recharts";
 
+const BASE_URL = "https://abhi02072005-jepa-backend.hf.space";
+
 const Calibration = () => {
     const [loading, setLoading] = useState(false);
 
@@ -26,7 +28,8 @@ const Calibration = () => {
         setScores([]);
 
         try {
-            const response = await fetch("http://localhost:5000/api/calibrate", {
+            // NOTE: No body needed — backend now accepts video_stem as a query param
+            const response = await fetch(`${BASE_URL}/api/calibrate`, {
                 method: "POST"
             });
 
