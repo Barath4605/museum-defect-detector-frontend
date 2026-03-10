@@ -3,6 +3,7 @@ import Home from "./pages/Home.jsx"
 import { Routes, Route } from "react-router-dom";
 import Training from "./pages/Training.jsx";
 import Calibration from "./pages/Calibration.jsx";
+import Detect from "./pages/Detect.jsx";
 
 function App() {
 
@@ -11,6 +12,7 @@ function App() {
             <Route path="/" element={<Home />} ></Route>
             <Route path="/training" element={<Training />} ></Route>
             <Route path="/calibration" element={<Calibration />} ></Route>
+            <Route path="/Detect" element={<Detect />} ></Route>
         </Routes>
     )
 

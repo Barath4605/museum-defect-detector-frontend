@@ -9,6 +9,7 @@ import {
     ResponsiveContainer,
     ReferenceLine
 } from "recharts";
+import Navbar from "../components/Navbar.jsx";
 
 const BASE_URL = "https://abhi02072005-jepa-backend.hf.space";
 
@@ -116,76 +117,79 @@ const Calibration = () => {
     const histogramData = createHistogram(scores);
 
     return (
-        <section>
-            <div className="w-full min-h-screen px-6 py-12 bg-oxford-blue text-tan border-b border-tan">
-                <h1 className="text-3xl font-semibold montserrat border-b border-yellow-500/50 pb-1 w-fit">
-                    Calibrate Anomaly Threshold
-                </h1>
+        <>
+            <Navbar />
+            <section>
+                <div className="w-full min-h-screen px-6 py-12 bg-oxford-blue text-tan border-b border-tan">
+                    <h1 className="text-3xl font-semibold montserrat border-b border-yellow-500/50 pb-1 w-fit">
+                        Calibrate Anomaly Threshold
+                    </h1>
 
-                <p className="w-full sm:w-[80%] lg:w-[40%] text-sm sm:text-lg my-2">
-                    Computes 97th percentile threshold from normal embeddings.
-                </p>
+                    <p className="w-full sm:w-[80%] lg:w-[40%] text-sm sm:text-lg my-2">
+                        Computes 97th percentile threshold from normal embeddings.
+                    </p>
 
-                <button
-                    onClick={handleCalibration}
-                    disabled={loading}
-                    className="p-2 px-4 my-5 border border-tan rounded-sm hover:bg-tan hover:text-black transition"
-                >
-                    {loading ? "Calibrating..." : "Run Calibration"}
-                </button>
+                    <button
+                        onClick={handleCalibration}
+                        disabled={loading}
+                        className="p-2 px-4 my-5 border border-tan rounded-sm hover:bg-tan hover:text-black transition"
+                    >
+                        {loading ? "Calibrating..." : "Run Calibration"}
+                    </button>
 
-                {threshold !== null && (
-                    <div className="grid grid-cols-2 md:grid-cols-5 gap-6 my-6 text-center">
-                        <div>
-                            <p className="text-sm opacity-70">Threshold</p>
-                            <p className="text-2xl">{threshold.toFixed(4)}</p>
+                    {threshold !== null && (
+                        <div className="grid grid-cols-2 md:grid-cols-5 gap-6 my-6 text-center">
+                            <div>
+                                <p className="text-sm opacity-70">Threshold</p>
+                                <p className="text-2xl">{threshold.toFixed(4)}</p>
+                            </div>
+                            <div>
+                                <p className="text-sm opacity-70">t_scale</p>
+                                <p className="text-2xl">{tScale?.toFixed(4)}</p>
+                            </div>
+                            <div>
+                                <p className="text-sm opacity-70">t_long</p>
+                                <p className="text-2xl">{tLongScale?.toFixed(4)}</p>
+                            </div>
+                            <div>
+                                <p className="text-sm opacity-70">s_scale</p>
+                                <p className="text-2xl">{sScale?.toFixed(4)}</p>
+                            </div>
+                            <div>
+                                <p className="text-sm opacity-70">e_scale</p>
+                                <p className="text-2xl">{eScale?.toFixed(4)}</p>
+                            </div>
                         </div>
-                        <div>
-                            <p className="text-sm opacity-70">t_scale</p>
-                            <p className="text-2xl">{tScale?.toFixed(4)}</p>
-                        </div>
-                        <div>
-                            <p className="text-sm opacity-70">t_long</p>
-                            <p className="text-2xl">{tLongScale?.toFixed(4)}</p>
-                        </div>
-                        <div>
-                            <p className="text-sm opacity-70">s_scale</p>
-                            <p className="text-2xl">{sScale?.toFixed(4)}</p>
-                        </div>
-                        <div>
-                            <p className="text-sm opacity-70">e_scale</p>
-                            <p className="text-2xl">{eScale?.toFixed(4)}</p>
-                        </div>
-                    </div>
-                )}
+                    )}
 
-                {histogramData.length > 0 && (
-                    <div className="w-full h-96 mt-10">
-                        <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={histogramData}>
-                                <CartesianGrid strokeDasharray="3 3" />
-                                <XAxis dataKey="range" />
-                                <YAxis />
-                                <Tooltip />
-                                <Bar dataKey="count" fill="#3182ce" />
+                    {histogramData.length > 0 && (
+                        <div className="w-full h-96 mt-10">
+                            <ResponsiveContainer width="100%" height="100%">
+                                <BarChart data={histogramData}>
+                                    <CartesianGrid strokeDasharray="3 3" />
+                                    <XAxis dataKey="range" />
+                                    <YAxis />
+                                    <Tooltip />
+                                    <Bar dataKey="count" fill="#3182ce" />
 
-                                {threshold !== null && (
-                                    <ReferenceLine
-                                        x={
-                                            histogramData.find(
-                                                b => threshold >= b.start && threshold < b.end
-                                            )?.range
-                                        }
-                                        stroke="red"
-                                        strokeDasharray="4 4"
-                                    />
-                                )}
-                            </BarChart>
-                        </ResponsiveContainer>
-                    </div>
-                )}
-            </div>
-        </section>
+                                    {threshold !== null && (
+                                        <ReferenceLine
+                                            x={
+                                                histogramData.find(
+                                                    b => threshold >= b.start && threshold < b.end
+                                                )?.range
+                                            }
+                                            stroke="red"
+                                            strokeDasharray="4 4"
+                                        />
+                                    )}
+                                </BarChart>
+                            </ResponsiveContainer>
+                        </div>
+                    )}
+                </div>
+            </section>
+        </>
     );
 };
 
