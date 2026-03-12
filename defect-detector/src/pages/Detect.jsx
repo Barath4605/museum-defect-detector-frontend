@@ -335,6 +335,8 @@ const Detect = () => {
             hover:bg-tan hover:text-yellow-700 cursor-pointer
             transition disabled:opacity-50 montserrat
           "
+
+
                     >
                         {loading ? "Analysing…" : "Run Detection"}
                     </button>
