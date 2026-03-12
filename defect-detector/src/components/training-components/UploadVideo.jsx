@@ -1,5 +1,6 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import "../../index.css";
+import { useNavigate } from "react-router-dom";
 import {
   LineChart,
   Line,
@@ -7,23 +8,33 @@ import {
   YAxis,
   Tooltip,
   CartesianGrid,
-  ResponsiveContainer
+  ResponsiveContainer,
 } from "recharts";
 
 const MAX_SIZE = 200 * 1024 * 1024;
 const BASE_URL = "https://abhi02072005-jepa-backend.hf.space";
 
 const UploadVideo = () => {
-  const [video, setVideo]           = useState(null);
-  const [loading, setLoading]       = useState(false);
-  const [lossHistory, setLossHistory] = useState([]);
-  const [trained, setTrained]       = useState(false);
-  const [logs, setLogs]             = useState([]);
-  const [error, setError]           = useState(null);
-  const [progress, setProgress]     = useState(null);
+  const navigate = useNavigate();
+
+  const [video, setVideo]               = useState(null);
+  const [videoURL, setVideoURL]         = useState(null);   // object URL for preview
+  const [loading, setLoading]           = useState(false);
+  const [lossHistory, setLossHistory]   = useState([]);
+  const [trained, setTrained]           = useState(false);
+  const [logs, setLogs]                 = useState([]);
+  const [error, setError]               = useState(null);
+  const [progress, setProgress]         = useState(null);
 
   const inputRef  = useRef(null);
   const logEndRef = useRef(null);
+
+  // Revoke the object URL when video changes or component unmounts
+  useEffect(() => {
+    return () => {
+      if (videoURL) URL.revokeObjectURL(videoURL);
+    };
+  }, [videoURL]);
 
   const pushLog = (msg) => {
     setLogs((prev) => [...prev, msg]);
@@ -33,6 +44,7 @@ const UploadVideo = () => {
   const handleChange = (e) => {
     const file = e.target.files[0];
     if (!file) return;
+
     if (!file.type.startsWith("video/")) {
       alert("Only video files allowed");
       e.target.value = "";
@@ -43,16 +55,23 @@ const UploadVideo = () => {
       e.target.value = "";
       return;
     }
+
+    // Revoke previous preview URL to avoid memory leaks
+    if (videoURL) URL.revokeObjectURL(videoURL);
+
     setVideo(file);
+    setVideoURL(URL.createObjectURL(file));
     setError(null);
+    // Reset results when a new file is picked
+    setTrained(false);
+    setLossHistory([]);
+    setLogs([]);
   };
 
   const pollStatus = async () => {
     const res    = await fetch(`${BASE_URL}/api/train/status`);
     const status = await res.json();
-    if (status.loss_history?.length) {
-      setLossHistory(status.loss_history);
-    }
+    if (status.loss_history?.length) setLossHistory(status.loss_history);
     return status.trained === true;
   };
 
@@ -69,10 +88,8 @@ const UploadVideo = () => {
     const formData = new FormData();
     formData.append("video", video);
 
-    // Local accumulator so the poll-fallback can see the latest value
-    // without depending on the React state closure
-    let localLossHistory  = [];
-    let trainingFinished  = false;
+    let localLossHistory = [];
+    let trainingFinished = false;
 
     try {
       pushLog("📤 Uploading video…");
@@ -98,14 +115,12 @@ const UploadVideo = () => {
         if (done) break;
 
         buffer += decoder.decode(value, { stream: true });
-
         const events = buffer.split("\n\n");
-        buffer = events.pop(); // keep incomplete trailing chunk
+        buffer = events.pop();
 
         for (const raw of events) {
           const trimmed = raw.trim();
           if (!trimmed.startsWith("data:")) continue;
-
           const jsonStr = trimmed.replace(/^data:\s*/, "");
           if (!jsonStr) continue;
 
@@ -117,11 +132,9 @@ const UploadVideo = () => {
             case "log":
               pushLog(data.msg);
               break;
-
             case "progress_a":
               setProgress({ label: "JEPA", epoch: data.epoch, total: data.total, loss: data.loss });
               break;
-
             case "stage_a_done":
               if (data.loss_history?.length) {
                 localLossHistory = data.loss_history;
@@ -129,62 +142,44 @@ const UploadVideo = () => {
               }
               pushLog(`📉 JEPA done — final loss: ${data.final_loss}`);
               break;
-
             case "progress_b":
               setProgress({ label: "SVDD", epoch: data.epoch, total: data.total, loss: data.loss });
               break;
-
             case "done":
               trainingFinished = true;
               pushLog(`🎉 Training complete! JEPA: ${data.jepa_loss} | SVDD: ${data.svdd_loss}`);
               break;
-
             case "stream_end":
               break;
-
             case "error":
               pushLog(`❌ Server error: ${data.msg}`);
               if (data.trace) console.error("Traceback:\n", data.trace);
               setError(data.msg);
               setLoading(false);
               return;
-
             default:
               break;
           }
         }
       }
 
-      // ── Confirm via status poll regardless of whether "done" arrived ──
-      // This handles HF Spaces occasionally dropping the last SSE chunk.
       pushLog("⏳ Confirming with server…");
       try {
         const isReady = await pollStatus();
-
         if (isReady) {
           setTrained(true);
           pushLog("✅ Model is ready!");
-          if (inputRef.current) inputRef.current.value = "";
-          setVideo(null);
         } else if (trainingFinished) {
-          // Backend said done in the stream but checkpoints not visible yet —
-          // can happen with slight filesystem lag; trust the stream event.
           setTrained(true);
           pushLog("✅ Training complete (confirmed via stream).");
-          if (inputRef.current) inputRef.current.value = "";
-          setVideo(null);
         } else {
           setError("Training may have failed — checkpoints not found. Check HF Space logs.");
           pushLog("⚠️ Model checkpoints not found on server.");
         }
       } catch (pollErr) {
-        console.error("Status poll failed:", pollErr);
         if (trainingFinished) {
-          // Trust the stream if poll fails (network blip)
           setTrained(true);
           pushLog("✅ Training complete (poll failed but stream confirmed).");
-          if (inputRef.current) inputRef.current.value = "";
-          setVideo(null);
         } else {
           setError("Could not confirm training status — check HF Space logs.");
         }
@@ -227,10 +222,20 @@ const UploadVideo = () => {
               className="mt-6 lg:p-10 p-3 border border-dashed rounded-md cursor-pointer text-sm"
           />
 
-          {video && (
-              <p className="mt-2 text-sm opacity-60">
-                {video.name} &mdash; {(video.size / 1024 / 1024).toFixed(1)} MB
-              </p>
+          {/* ── Video preview ── */}
+          {videoURL && (
+              <div className="mt-6 w-full max-w-fit">
+                <p className="text-xs opacity-50 montserrat mb-2 text-left">
+                  Preview — {video?.name} &nbsp;&middot;&nbsp; {(video?.size / 1024 / 1024).toFixed(1)} MB
+                </p>
+                <video
+                    key={videoURL}           /* remount when file changes */
+                    src={videoURL}
+                    controls
+                    className="w-full rounded-xl bg-black"
+                    style={{ maxHeight: 640, minWidth:640 }}
+                />
+              </div>
           )}
 
           <button
@@ -239,17 +244,17 @@ const UploadVideo = () => {
               className="
             mt-6 px-6 py-2
             border border-tan rounded
-            hover:bg-tan hover:text-oxford-blue
+            hover:bg-tan  hover:text-yellow-700 cursor-pointer
             transition disabled:opacity-50
           "
           >
             {loading ? "Training…" : "Train"}
           </button>
 
-          {/* ── Progress bar ── */}
+          {/* ── Epoch progress bar ── */}
           {loading && progress && (
               <div className="mt-6 w-full max-w-md">
-                <p className="text-sm mb-1 opacity-70">
+                <p className="text-sm mb-1 opacity-70 montserrat">
                   {progress.label} &mdash; Epoch {progress.epoch} / {progress.total} &mdash; Loss: {progress.loss}
                 </p>
                 <div className="w-full bg-slate-700 rounded-full h-2">
@@ -286,11 +291,10 @@ const UploadVideo = () => {
 
         {/* ── Loss curve ── */}
         {trained && chartData.length > 0 && (
-            <div className="w-full px-6 py-12">
+            <div className="w-full px-6 py-12 border-b border-tan/20">
               <h3 className="text-xl font-semibold montserrat mb-6 text-center">
                 Training Loss Curve
               </h3>
-              {/* Explicit px height — fixes recharts width(-1)/height(-1) warning */}
               <div style={{ width: "100%", height: 350 }}>
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={chartData} margin={{ top: 5, right: 30, left: 10, bottom: 5 }}>
@@ -321,6 +325,26 @@ const UploadVideo = () => {
                     />
                   </LineChart>
                 </ResponsiveContainer>
+              </div>
+
+              {/* ── Go calibrate CTA ── */}
+              <div className="mt-10 flex flex-col items-center gap-3 text-center">
+                <p className="text-sm opacity-60 montserrat">
+                  Training complete. Next step: calibrate the anomaly threshold.
+                </p>
+                <button
+                    onClick={() => navigate("/calibration", { state: { autoStart: true } })}
+                    className="
+                px-8 py-3
+                bg-tan text-oxford-blue
+                font-semibold montserrat rounded-lg
+                hover:opacity-90 active:scale-95
+                transition-all duration-150
+                shadow-lg shadow-tan/20
+              "
+                >
+                  Run Calibration →
+                </button>
               </div>
             </div>
         )}

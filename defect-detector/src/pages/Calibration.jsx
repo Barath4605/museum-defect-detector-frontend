@@ -1,4 +1,5 @@
-import React, { useState } from "react";
+import React, {useEffect, useState} from "react";
+import { useLocation } from "react-router-dom";
 import {
     BarChart,
     Bar,
@@ -15,13 +16,19 @@ const BASE_URL = "https://abhi02072005-jepa-backend.hf.space";
 
 const Calibration = () => {
     const [loading, setLoading] = useState(false);
-
+    const location = useLocation();
     const [threshold, setThreshold] = useState(null);
     const [tScale, setTScale] = useState(null);
     const [tLongScale, setTLongScale] = useState(null);
     const [sScale, setSScale] = useState(null);
     const [eScale, setEScale] = useState(null);
     const [scores, setScores] = useState([]);
+
+    useEffect(() => {
+        if (location.state?.autoStart) {
+            handleCalibration();
+        }
+    }, []);
 
     const handleCalibration = async () => {
         setLoading(true);

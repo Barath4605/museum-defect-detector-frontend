@@ -332,7 +332,7 @@ const Detect = () => {
                         className="
             mt-6 px-8 py-2
             border border-tan rounded
-            hover:bg-tan hover:text-oxford-blue
+            hover:bg-tan hover:text-yellow-700 cursor-pointer
             transition disabled:opacity-50 montserrat
           "
                     >
