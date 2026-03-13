@@ -1,4 +1,4 @@
-import React, {useEffect, useState} from "react";
+import React, { useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
 import {
     BarChart,
@@ -16,6 +16,7 @@ const BASE_URL = "https://abhi02072005-jepa-backend.hf.space";
 
 const Calibration = () => {
     const [loading, setLoading] = useState(false);
+    const [calibProgress, setCalibProgress] = useState(null);
     const location = useLocation();
     const [threshold, setThreshold] = useState(null);
     const [tScale, setTScale] = useState(null);
@@ -34,6 +35,7 @@ const Calibration = () => {
         setLoading(true);
         setThreshold(null);
         setScores([]);
+        setCalibProgress(null);
 
         try {
             // NOTE: No body needed — backend now accepts video_stem as a query param
@@ -66,7 +68,7 @@ const Calibration = () => {
                         const data = JSON.parse(jsonString);
 
                         if (data.type === "progress") {
-                            console.log("Calibration progress:", data.current, "/", data.total);
+                            setCalibProgress({ current: data.current, total: data.total });
                         }
 
                         if (data.type === "done") {
@@ -76,11 +78,13 @@ const Calibration = () => {
                             setSScale(data.s_scale);
                             setEScale(data.e_scale);
                             setScores(data.scores || []);
+                            setCalibProgress(null);
                             setLoading(false);
                         }
 
                         if (data.type === "error") {
                             console.error("Calibration error:", data.msg);
+                            setCalibProgress(null);
                             setLoading(false);
                             return;
                         }
@@ -143,6 +147,23 @@ const Calibration = () => {
                     >
                         {loading ? "Calibrating..." : "Run Calibration"}
                     </button>
+
+                    {/* Progress bar */}
+                    {loading && calibProgress && (
+                        <div className="mt-6 w-full max-w-md">
+                            <p className="text-sm mb-1 opacity-70 montserrat">
+                                Scoring frame {calibProgress.current} / {calibProgress.total}
+                            </p>
+                            <div className="w-full bg-slate-700 rounded-full h-2">
+                                <div
+                                    className="bg-tan h-2 rounded-full transition-all duration-150"
+                                    style={{
+                                        width: `${Math.min(Math.round((calibProgress.current / calibProgress.total) * 100), 100)}%`,
+                                    }}
+                                />
+                            </div>
+                        </div>
+                    )}
 
                     {threshold !== null && (
                         <div className="grid grid-cols-2 md:grid-cols-5 gap-6 my-6 text-center">
