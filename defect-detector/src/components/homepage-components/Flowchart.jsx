@@ -3,7 +3,7 @@ import { ArrowDown } from "lucide-react";
 
 const Step = ({ children }) => {
     return (
-        <div className="w-full max-w-3xl ibm-mono bg-slate-800/60 backdrop-blur-md rounded-2xl p-6 shadow-lg hover:shadow-xl transition duration-300">
+        <div className="w-full max-w-3xl ibm-mono bg-black/20 backdrop-blur-2xl rounded-2xl p-6 shadow-lg hover:shadow-xl transition duration-300">
             {children}
         </div>
     );
