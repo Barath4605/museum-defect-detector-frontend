@@ -9,6 +9,24 @@ import {
 const MAX_SIZE = 200 * 1024 * 1024;
 const BASE_URL = "https://abhi02072005-jepa-backend.hf.space";
 
+// ── Slider primitive ──────────────────────────────────────────────────────────
+const HyperSlider = ({ label, value, min, max, step, onChange, format }) => (
+    <div className="flex flex-col gap-2">
+      <div className="flex justify-between items-baseline">
+        <span className="text-xs montserrat opacity-50">{label}</span>
+        <span className="text-xs montserrat text-tan font-semibold">{format ? format(value) : value}</span>
+      </div>
+      <input
+          type="range" min={min} max={max} step={step} value={value}
+          onChange={(e) => onChange(Number(e.target.value))}
+          className="w-full accent-tan h-1 cursor-pointer"
+      />
+      <div className="flex justify-between text-[9px] montserrat opacity-20">
+        <span>{min}</span><span>{max}</span>
+      </div>
+    </div>
+);
+
 const UploadVideo = () => {
   const navigate = useNavigate();
 
@@ -21,6 +39,18 @@ const UploadVideo = () => {
   const [error, setError]             = useState(null);
   const [progress, setProgress]       = useState(null);
   const [dragOver, setDragOver]       = useState(false);
+  const [showHyper, setShowHyper]     = useState(false);
+
+  // ── Hyperparameters ──────────────────────────────────────────────────────
+  const [fps,         setFps]         = useState(3);
+  const [windowSize,  setWindowSize]  = useState(8);
+  const [epochs,      setEpochs]      = useState(30);
+  const [svddEpochs,  setSvddEpochs]  = useState(20);
+  const [batchSize,   setBatchSize]   = useState(16);
+  const [alphaShort,  setAlphaShort]  = useState(0.40);
+  const [alphaLong,   setAlphaLong]   = useState(0.15);
+  const [betaSpatial, setBetaSpatial] = useState(0.25);
+  const [gammaEnergy, setGammaEnergy] = useState(0.20);
 
   const inputRef  = useRef(null);
   const logEndRef = useRef(null);
@@ -72,7 +102,19 @@ const UploadVideo = () => {
     setLogs([]); setError(null); setProgress(null);
 
     const formData = new FormData();
-    formData.append("video", video);
+    formData.append("video",        video);
+    // Pass hyperparameters to backend
+    formData.append("fps",          fps);
+    formData.append("epochs",       epochs);
+    formData.append("svdd_epochs",  svddEpochs);
+    formData.append("batch_size",   batchSize);
+    // Weight params sent as JSON string (backend can parse as needed)
+    formData.append("alpha_short",  alphaShort);
+    formData.append("alpha_long",   alphaLong);
+    formData.append("beta_spatial", betaSpatial);
+    formData.append("gamma_energy", gammaEnergy);
+    formData.append("window_size",  windowSize);
+
     let trainingFinished = false;
 
     try {
@@ -137,8 +179,8 @@ const UploadVideo = () => {
     }
   };
 
-  const chartData    = lossHistory.map((loss, i) => ({ epoch: i + 1, loss: parseFloat(Number(loss).toFixed(6)) }));
-  const progressPct  = progress ? Math.round((progress.epoch / progress.total) * 100) : 0;
+  const chartData   = lossHistory.map((loss, i) => ({ epoch: i + 1, loss: parseFloat(Number(loss).toFixed(6)) }));
+  const progressPct = progress ? Math.round((progress.epoch / progress.total) * 100) : 0;
 
   return (
       <section className="bg-oxford-blue text-tan min-h-screen">
@@ -188,7 +230,7 @@ const UploadVideo = () => {
                         ? "bg-tan/8 scale-[1.01]"
                         : "bg-linear-to-br from-black/10 via-black/40 to-black/80 hover:bg-black/50"}
               `}
-                    style={{ padding: "3px" }} /* gradient border wrapper */
+                    style={{ padding: "3px" }}
                 >
                   {/* Gradient border */}
                   <div className={`
@@ -263,7 +305,6 @@ const UploadVideo = () => {
             {/* File selected state */}
             {video && videoURL && (
                 <div className="overflow-hidden fade-up">
-                  {/* Video preview */}
                   <video
                       key={videoURL}
                       src={videoURL}
@@ -271,11 +312,8 @@ const UploadVideo = () => {
                       className="w-full bg-black"
                       style={{ maxHeight: 720, maxWidth: 720 }}
                   />
-
-                  {/* File meta bar */}
                   <div className="flex items-center justify-between px-5 py-3 bg-slate-900/80 border-t border-tan/10">
                     <div className="flex items-center gap-3 min-w-0">
-                      {/* Video icon */}
                       <div className="w-9 h-9 flex items-center justify-center flex-shrink-0">
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="opacity-60">
                           <polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
@@ -286,7 +324,6 @@ const UploadVideo = () => {
                         <p className="text-[10px] montserrat opacity-30 mt-0.5">{(video.size / 1024 / 1024).toFixed(1)} MB</p>
                       </div>
                     </div>
-
                     <div className="flex items-center gap-3 flex-shrink-0 ml-4">
                       <button onClick={() => inputRef.current?.click()}
                               className="text-[11px] montserrat opacity-40 hover:opacity-80 transition underline underline-offset-2">
@@ -304,6 +341,109 @@ const UploadVideo = () => {
 
           {/* Hidden input */}
           <input ref={inputRef} type="file" accept="video/*" onChange={handleChange} className="hidden" />
+
+          {/* ── Hyperparameter panel toggle ── */}
+          <button
+              onClick={() => setShowHyper((v) => !v)}
+              className="mt-6 flex items-center gap-2 text-xs montserrat opacity-40 hover:opacity-70 transition"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+                 className={`transition-transform duration-300 ${showHyper ? "rotate-180" : ""}`}>
+              <polyline points="6 9 12 15 18 9"/>
+            </svg>
+            {showHyper ? "Hide hyperparameters" : "Tune hyperparameters"}
+          </button>
+
+          {/* ── Hyperparameter sliders ── */}
+          {showHyper && (
+              <div className="mt-4 w-full max-w-2xl fade-up">
+                <div className="bg-black/30 backdrop-blur-2xl rounded-md p-6">
+
+                  {/* Two-column grid on sm+ */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-10 gap-y-7">
+
+                    {/* ── Architecture ── */}
+                    <div className="sm:col-span-2">
+                      <p className="text-[12px] montserrat tracking-[0.25em] uppercase opacity-25 mb-4">Architecture</p>
+                    </div>
+
+                    <HyperSlider
+                        label="Sample FPS"
+                        value={fps} min={1} max={10} step={1}
+                        onChange={setFps}
+                    />
+                    <HyperSlider
+                        label="Window Size K (short)"
+                        value={windowSize} min={4} max={32} step={1}
+                        onChange={setWindowSize}
+                    />
+
+                    {/* ── Training ── */}
+                    <div className="sm:col-span-2 mt-2">
+                      <p className="text-[12px] montserrat tracking-[0.25em] uppercase opacity-25 mb-4">Training</p>
+                    </div>
+
+                    <HyperSlider
+                        label="Epochs (JEPA)"
+                        value={epochs} min={5} max={100} step={5}
+                        onChange={setEpochs}
+                    />
+                    <HyperSlider
+                        label="Epochs (SVDD)"
+                        value={svddEpochs} min={5} max={80} step={5}
+                        onChange={setSvddEpochs}
+                    />
+                    <HyperSlider
+                        label="Batch Size"
+                        value={batchSize} min={4} max={64} step={4}
+                        onChange={setBatchSize}
+                    />
+
+                    {/* ── Loss weights ── */}
+                    <div className="sm:col-span-2 mt-2">
+                      <p className="text-[12px] montserrat tracking-[0.25em] uppercase opacity-25 mb-4">Loss Weights</p>
+                    </div>
+
+                    <HyperSlider
+                        label="α Temporal-Short"
+                        value={alphaShort} min={0.05} max={1.0} step={0.05}
+                        onChange={setAlphaShort}
+                        format={(v) => v.toFixed(2)}
+                    />
+                    <HyperSlider
+                        label="α Temporal-Long"
+                        value={alphaLong} min={0.05} max={1.0} step={0.05}
+                        onChange={setAlphaLong}
+                        format={(v) => v.toFixed(2)}
+                    />
+                    <HyperSlider
+                        label="β Spatial"
+                        value={betaSpatial} min={0.05} max={1.0} step={0.05}
+                        onChange={setBetaSpatial}
+                        format={(v) => v.toFixed(2)}
+                    />
+                    <HyperSlider
+                        label="γ Energy (SVDD)"
+                        value={gammaEnergy} min={0.05} max={1.0} step={0.05}
+                        onChange={setGammaEnergy}
+                        format={(v) => v.toFixed(2)}
+                    />
+                  </div>
+
+                  {/* Reset to defaults */}
+                  <button
+                      onClick={() => {
+                        setFps(3); setWindowSize(8); setEpochs(30); setSvddEpochs(20);
+                        setBatchSize(16); setAlphaShort(0.40); setAlphaLong(0.15);
+                        setBetaSpatial(0.25); setGammaEnergy(0.20);
+                      }}
+                      className="mt-6 text-[10px] montserrat cursor-pointer opacity-30 hover:opacity-60 transition underline underline-offset-2"
+                  >
+                    Reset to defaults
+                  </button>
+                </div>
+              </div>
+          )}
 
           {/* ── Train button ── */}
           <button
@@ -340,7 +480,6 @@ const UploadVideo = () => {
                 <div className="relative w-full h-1 bg-slate-700/60 rounded-full overflow-hidden">
                   <div className="absolute inset-y-0 left-0 bg-tan rounded-full transition-all duration-500"
                        style={{ width: `${progressPct}%` }} />
-                  {/* shimmer */}
                   <div className="absolute inset-y-0 w-16 rounded-full opacity-60"
                        style={{
                          left: `${Math.max(progressPct - 8, 0)}%`,
@@ -380,7 +519,6 @@ const UploadVideo = () => {
          ══════════════════════════════════ */}
         {trained && chartData.length > 0 && (
             <div className="w-full px-6 py-20">
-              {/* Header */}
               <div className="text-center mb-12">
                 <p className="text-[10px] montserrat tracking-[0.3em] uppercase opacity-30 mb-2">Results</p>
                 <h3 className="text-2xl font-semibold montserrat">Training Loss Curve</h3>
@@ -404,18 +542,13 @@ const UploadVideo = () => {
                 </ResponsiveContainer>
               </div>
 
-              {/* ── CTA ── */}
               <div className="mt-16 flex flex-col items-center gap-5">
                 <div className="flex items-center gap-4 w-full max-w-xs">
                   <div className="flex-1 h-px bg-gradient-to-r from-transparent to-tan/20" />
                   <span className="text-[10px] montserrat tracking-[0.3em] uppercase opacity-25">Next step</span>
                   <div className="flex-1 h-px bg-gradient-to-l from-transparent to-tan/20" />
                 </div>
-
-                <p className="text-sm opacity-40 montserrat">
-                  Set the anomaly threshold by running calibration.
-                </p>
-
+                <p className="text-sm opacity-40 montserrat">Set the anomaly threshold by running calibration.</p>
                 <button
                     onClick={() => navigate("/calibration", { state: { autoStart: true } })}
                     className="

@@ -505,7 +505,7 @@ const Detect = () => {
                             </button>
 
                             {showAdvanced && (
-                                <div className="mt-4 w-full max-w-md bg-black/40 border border-gray-300/20 rounded-2xl p-5 grid grid-cols-2 gap-4 text-left montserrat fade-up">
+                                <div className="mt-4 w-full max-w-md bg-linear-to-br from-black/80 via-black/50 to-black/35 rounded-md p-5 grid grid-cols-2 gap-4 text-left montserrat fade-up">
                                     {[
                                         { label: "Max Frames (0 = all)", val: maxFrames, set: setMaxFrames, step: 1, min: 0 },
                                         { label: "Show Frame Every N", val: showEvery, set: setShowEvery, step: 1, min: 1 },
@@ -788,7 +788,9 @@ const Detect = () => {
 
                             {/* Config panel */}
                             {(wcStatus === "idle" || wcStatus === "stopped") && (
-                                <div className="max-w-sm mx-auto bg-slate-800/40 rounded-2xl p-6 mb-8 fade-up">
+                                <div className="max-w-sm mx-auto bg-linear-to-br
+                                   from-black/80 via-black/50 to-black/35 rounded-md
+                                 p-6 mb-8 fade-up">
                                     <p className="text-[10px] montserrat tracking-[0.2em] uppercase opacity-30 mb-4">Stream Settings</p>
                                     <div className="space-y-4">
                                         <label className="flex flex-col gap-1.5">
