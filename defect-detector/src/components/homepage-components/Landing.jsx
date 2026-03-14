@@ -13,9 +13,9 @@ const Landing = () => {
                 items-center justify-center
                 border-b border-tan
           ">
-                <h1 className="text-9xl font-bold ibm-mono
+                <h1 className="lg:text-9xl text-6xl font-bold ibm-mono
                         bg-linear-to-b from-white/80 via-white/60 to-transparent
-                        bg-clip-text text-transparent w-[75%]
+                        bg-clip-text text-transparent lg:w-[75%] w-[100%]
         ">
                     JEPA <br/> Exhibit Defect Detections
                 </h1>
@@ -25,8 +25,7 @@ const Landing = () => {
                   w-full
                   sm:w-[80%]
                   lg:w-[50%]
-                  text-base
-                  sm:text-lg
+                  lg:text-xl text-xs
                 ">
                     Self-supervised spatio-temporal AI that
                     learns an exhibit’s normal behavior and flags
