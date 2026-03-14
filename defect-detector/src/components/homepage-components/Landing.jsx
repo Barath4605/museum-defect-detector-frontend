@@ -11,24 +11,20 @@ const Landing = () => {
                 text-white
                 bg-oxford-blue text-tan
                 items-center justify-center
-                text-center
                 border-b border-tan
           ">
-                <h1 className="
-                  text-3xl
-                  sm:text-4xl
-                  lg:text-6xl
-                  font-semibold
-                  montserrat
-                ">
-                    JEPA Exhibit Defect Detection
+                <h1 className="text-9xl font-bold ibm-mono
+                        bg-linear-to-b from-white/80 via-white/60 to-transparent
+                        bg-clip-text text-transparent w-[75%]
+        ">
+                    JEPA <br/> Exhibit Defect Detections
                 </h1>
 
                 <p className="
-
+                  text-center montserrat
                   w-full
                   sm:w-[80%]
-                  lg:w-[40%]
+                  lg:w-[50%]
                   text-base
                   sm:text-lg
                 ">
