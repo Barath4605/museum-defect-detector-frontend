@@ -26,11 +26,11 @@ const Footer = () => {
             JEPA Exhibit Defect Detections<span className="text-md">©</span>
         </h1>
           <hr className="text-white/40 my-2"/>
-          <div className="flex justify-between items-center space-x-2 mb-2 text-2xl text-white ibm-mono">
+          <div className="grid grid-cols-1 lg:grid-cols-3 justify-between items-center space-x-2 mb-2 text-2xl text-white ibm-mono">
               {devs.map( (dev) => (
                   <>
-                      <div>
-                          <h1 className="cursor-pointer w-fit text-3xl text-white border-white">
+                      <div className="my-2">
+                          <h1 className="cursor-pointer w-fit lg:text-3xl text-2xl text-white border-white">
                               {dev.name}
                           </h1>
                           <ul className="flex flex-col">
