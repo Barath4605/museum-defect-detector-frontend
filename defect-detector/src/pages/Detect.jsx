@@ -288,10 +288,25 @@ const Detect = () => {
                     if (pendingRef.current) return;
                     if (!webcamVideoRef.current || !canvasRef.current) return;
                     if (ws.readyState !== WebSocket.OPEN) return;
+
                     const vid = webcamVideoRef.current;
                     const canvas = canvasRef.current;
-                    canvas.width = vid.videoWidth || 640; canvas.height = vid.videoHeight || 480;
-                    canvas.getContext("2d").drawImage(vid, 0, 0, canvas.width, canvas.height);
+
+                    // ── FIX: guard against black/empty frames ──────────────────
+                    // readyState < 2 = no decoded frame yet (HAVE_CURRENT_DATA=2)
+                    // videoWidth === 0 = stream dimensions not known yet
+                    if (vid.readyState < 2 || vid.videoWidth === 0 || vid.paused) return;
+
+                    canvas.width  = vid.videoWidth;
+                    canvas.height = vid.videoHeight;
+                    const ctx = canvas.getContext("2d");
+                    ctx.drawImage(vid, 0, 0, canvas.width, canvas.height);
+
+                    // Skip if center pixel is fully transparent (canvas not yet painted)
+                    const sample = ctx.getImageData(Math.floor(canvas.width / 2), Math.floor(canvas.height / 2), 1, 1).data;
+                    if (sample[3] === 0) return;
+                    // ──────────────────────────────────────────────────────────
+
                     canvas.toBlob((blob) => {
                         if (!blob) return;
                         blob.arrayBuffer().then((buf) => {
@@ -630,6 +645,7 @@ const Detect = () => {
                         {frames.length > 1 && (
                             <div className="w-full px-5 sm:px-10 py-14 border-b border-tan/10">
                                 <SectionHeader title="Anomaly Score Timeline" sub="Per-frame composite score — red dashed line is the calibrated threshold" />
+                                {/* FIX: explicit px height wrapper silences width(-1)/height(-1) warning */}
                                 <div className="bg-black/30 rounded-2xl p-4 sm:p-6 max-w-5xl mx-auto">
                                     <div style={{ width: "100%", height: 300 }}>
                                         <ResponsiveContainer width="100%" height="100%">
@@ -943,6 +959,7 @@ const Detect = () => {
                             {wcChartData.length > 2 && (
                                 <div className="mt-6 mb-4">
                                     <p className="text-[10px] montserrat tracking-[0.2em] uppercase opacity-30 mb-4 text-center">Live Score Timeline</p>
+                                    {/* FIX: explicit px height wrapper silences width(-1)/height(-1) warning */}
                                     <div className="bg-slate-800/30 border border-tan/10 rounded-2xl p-4 sm:p-6">
                                         <div style={{ width: "100%", height: 240 }}>
                                             <ResponsiveContainer width="100%" height="100%">
