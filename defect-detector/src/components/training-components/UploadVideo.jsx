@@ -428,7 +428,7 @@ const UploadVideo = () => {
               "
                 >
               <span className="absolute inset-0 -translate-x-full group-hover:translate-x-full transition-transform duration-500
-                               bg-gradient-to-r from-transparent via-white/15 to-transparent" />
+                               bg-linear-to-r from-transparent via-white/15 to-transparent" />
                   Run Calibration →
                 </button>
               </div>
