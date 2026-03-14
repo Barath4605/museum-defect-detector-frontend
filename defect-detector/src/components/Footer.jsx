@@ -30,10 +30,10 @@ const Footer = () => {
               {devs.map( (dev) => (
                   <>
                       <div className="my-2">
-                          <h1 className="cursor-pointer w-fit lg:text-3xl text-2xl text-white border-white">
+                          <h1 className="w-fit lg:text-3xl text-2xl text-white border-white">
                               {dev.name}
                           </h1>
-                          <ul className="flex flex-col">
+                          <ul className="flex space-x-6 lg:flex-col">
                               <li className="ibm-mono text-neutral-50/50 border-b border-neutral-50/50 hover:border-neutral-50
                                             w-fit text-base hover:text-neutral-50 cursor-pointer" onClick={() => window.open(dev.github , "_blank","noopener,noreferrer")}>Github</li>
                               <li className="ibm-mono text-neutral-50/50 border-b border-neutral-50/50 hover:border-neutral-50
