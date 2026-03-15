@@ -24,7 +24,7 @@ const Footer = () => {
         <footer className="w-full p-2 bg-linear-to-br">
             <section className="w-[80%] mx-auto">
                 <h1 className="text-xl font-light ibm-mono text-white ">
-                    JEPA Exhibit Defect Detections<span className="text-md">©</span>
+                    JEPA Exhibit Defect Detection<span className="text-md">©</span>
                 </h1>
                 <hr className="text-white/40 my-2"/>
                 <div className="grid grid-cols-1 lg:grid-cols-3 justify-between items-center space-x-2 mb-2 text-2xl text-white ibm-mono">

@@ -31,7 +31,7 @@ const Flowchart = () => {
                     <h2 className="text-xl font-semibold text-tan mb-2">
                         Input Video
                     </h2>
-                    <p className="text-slate-300">Normal Video (2.mp4)</p>
+                    <p className="text-slate-300">Normal Video</p>
                 </Step>
 
                 <Arrow />

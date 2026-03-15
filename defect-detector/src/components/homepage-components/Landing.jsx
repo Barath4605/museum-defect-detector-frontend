@@ -17,7 +17,7 @@ const Landing = () => {
                         bg-linear-to-b from-white/80 via-white/60 to-transparent
                         bg-clip-text text-transparent lg:w-[75%] w-[100%]
         ">
-                    JEPA <br/> Exhibit Defect Detections
+                    JEPA <br/> Exhibit Defect Detection
                 </h1>
 
                 <p className="
