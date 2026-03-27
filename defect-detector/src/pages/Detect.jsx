@@ -76,12 +76,15 @@ const Detect = () => {
     const [done, setDone] = useState(false);
     const [totalFrames, setTotalFrames] = useState(0);
     const [anomalyFrameImages, setAnomalyFrameImages] = useState([]);
-    const [originalFrames, setOriginalFrames] = useState({});
+    const [analysisData, setAnalysisData] = useState({});
     const [dragOver, setDragOver] = useState(false);
+    const [avgScoreBackend, setAvgScoreBackend] = useState(null);
+    const [peakScoreBackend, setPeakScoreBackend] = useState(null);
     const [maxFrames, setMaxFrames] = useState(0);
     const [showEvery, setShowEvery] = useState(5);
     const [maskHumans, setMaskHumans] = useState(true);
     const [thresholdOverride, setThresholdOverride] = useState(0);
+    const [thresholdMode, setThresholdMode] = useState("calibrated");
     const [showAdvanced, setShowAdvanced] = useState(false);
 
     // Webcam state
@@ -121,7 +124,8 @@ const Detect = () => {
         if (videoURL) URL.revokeObjectURL(videoURL);
         setVideo(file); setVideoURL(URL.createObjectURL(file));
         setError(null); setDone(false); setFrames([]); setLastFrame(null);
-        setThreshold(null); setAnomalyFrameImages([]); setOriginalFrames({});
+        setThreshold(null); setAnomalyFrameImages([]); setAnalysisData({});
+        setAvgScoreBackend(null); setPeakScoreBackend(null);
         setLogs([]);
     }, [videoURL]);
 
@@ -141,7 +145,8 @@ const Detect = () => {
         if (!video) { alert("Select a video first"); return; }
         setLoading(true); setLogs([]); setError(null); setFrames([]);
         setLastFrame(null); setProgress(null); setThreshold(null);
-        setDone(false); setTotalFrames(0); setAnomalyFrameImages([]); setOriginalFrames({});
+        setDone(false); setTotalFrames(0); setAnomalyFrameImages([]); setAnalysisData({});
+        setAvgScoreBackend(null); setPeakScoreBackend(null);
 
         const formData = new FormData();
         formData.append("video", video);
@@ -149,6 +154,7 @@ const Detect = () => {
         formData.append("show_every", showEvery);
         formData.append("mask_humans", maskHumans);
         formData.append("threshold_override", thresholdOverride);
+        formData.append("threshold_mode", thresholdMode);
 
         try {
             pushLog(" Uploading video for inference…");
@@ -194,6 +200,8 @@ const Detect = () => {
                         }
                         case "done":
                             setDone(true); setTotalFrames(data.total_frames);
+                            if (data.avg_score != null) setAvgScoreBackend(data.avg_score);
+                            if (data.peak_score != null) setPeakScoreBackend(data.peak_score);
                             pushLog(`🏁 Inference complete — ${data.total_frames} frames processed.`); break;
                         case "error":
                             pushLog(`❌ ${data.msg}`);
@@ -210,40 +218,37 @@ const Detect = () => {
         }
     };
 
-    // ── Frame extraction ──────────────────────────────────────────────────────
-    const extractFrameFromVideo = useCallback((videoEl, timeSec) => {
-        return new Promise((resolve) => {
-            const canvas = document.createElement("canvas");
-            const onSeeked = () => {
-                canvas.width = videoEl.videoWidth; canvas.height = videoEl.videoHeight;
-                canvas.getContext("2d").drawImage(videoEl, 0, 0);
-                resolve(canvas.toDataURL("image/jpeg", 0.85));
-                videoEl.removeEventListener("seeked", onSeeked);
-            };
-            videoEl.addEventListener("seeked", onSeeked);
-            videoEl.currentTime = timeSec;
-        });
-    }, []);
+    // ── Analyze Anomaly (Semantic Match & Heatmap) ────────────────────────────
+    const analyzeAnomaly = async (frame) => {
+        if (analysisData[frame.idx]?.loading) return;
+        setAnalysisData((prev) => ({ ...prev, [frame.idx]: { loading: true } }));
+        try {
+            const res = await fetch(`data:image/jpeg;base64,${frame.b64}`);
+            const blob = await res.blob();
+            
+            const formData = new FormData();
+            formData.append("anomaly_frame", blob, `anomaly_${frame.idx}.jpg`);
 
-    useEffect(() => {
-        if (!done || !anomalyFrameImages.length || !videoURL) return;
-        const videoEl = hiddenVideoRef.current;
-        if (!videoEl) return;
-        const doExtract = async () => {
-            if (videoEl.readyState < 1)
-                await new Promise((r) => videoEl.addEventListener("loadedmetadata", r, { once: true }));
-            const duration = videoEl.duration;
-            const estTotal = totalFrames || frames.length || 1;
-            const top = [...anomalyFrameImages].sort((a, b) => b.score - a.score).slice(0, 10);
-            const extracted = {};
-            for (const fr of top) {
-                const t = Math.min((fr.idx / estTotal) * duration, duration - 0.01);
-                try { extracted[fr.idx] = await extractFrameFromVideo(videoEl, t); } catch (_) { }
-            }
-            setOriginalFrames(extracted);
-        };
-        doExtract();
-    }, [done, anomalyFrameImages, videoURL, totalFrames, frames.length, extractFrameFromVideo]);
+            const response = await fetch(`${BASE_URL}/api/analyze-anomaly`, { method: "POST", body: formData });
+            if (!response.ok) throw new Error("Analysis failed");
+            const data = await response.json();
+            
+            setAnalysisData((prev) => ({
+                ...prev,
+                [frame.idx]: {
+                    loading: false,
+                    normalFrame: data.normal_frame_b64,
+                    heatmap: data.heatmap_b64,
+                    matchedIndex: data.matched_index
+                }
+            }));
+        } catch (err) {
+            setAnalysisData((prev) => ({
+                ...prev,
+                [frame.idx]: { loading: false, error: err.message }
+            }));
+        }
+    };
 
     // ── Webcam ────────────────────────────────────────────────────────────────
     const stopWebcam = useCallback(() => {
@@ -519,7 +524,15 @@ const Detect = () => {
                                     ))}
                                     <label className="flex items-center gap-2 cursor-pointer col-span-1 mt-1">
                                         <input type="checkbox" checked={maskHumans} onChange={(e) => setMaskHumans(e.target.checked)} className="accent-tan w-4 h-4" />
-                                        <span className="opacity-60 text-xs">Mask Humans (YOLO)</span>
+                                        <span className="opacity-60 text-xs">Mask Humans</span>
+                                    </label>
+                                    <label className="flex flex-col gap-1.5 col-span-2 mt-2">
+                                        <span className="opacity-40 text-[10px] uppercase tracking-wide">Threshold Mode</span>
+                                        <select value={thresholdMode} onChange={(e) => setThresholdMode(e.target.value)} 
+                                            className="bg-black/60 rounded-md px-3 py-1.5 text-tan text-xs focus:outline-none focus:border-tan/40">
+                                            <option value="calibrated">Calibrated (Static)</option>
+                                            <option value="dynamic_mean">Dynamic Mean (Running Average)</option>
+                                        </select>
                                     </label>
                                 </div>
                             )}
@@ -638,11 +651,16 @@ const Detect = () => {
                         {done && frames.length > 0 && (
                             <div className="w-full px-5 sm:px-10 py-14 border-b border-tan/10">
                                 <SectionHeader title="Summary" sub="Overall detection results for this video" />
-                                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 max-w-4xl mx-auto">
+                                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4 max-w-6xl mx-auto">
                                     <StatCard label="Total Frames" value={totalFrames} />
                                     <StatCard label="Anomaly Frames" value={anomalyFrames.length} highlight={anomalyFrames.length > 0} sub={`of ${totalFrames} frames`} />
                                     <StatCard label="Anomaly %" value={`${anomalyPct}%`} highlight={parseFloat(anomalyPct) > 10} />
-                                    <StatCard label="Peak Score" value={maxScore} sub={`avg ${avgScore}`} />
+                                    <StatCard label="Calibrated Threshold" value={threshold != null ? Number(threshold).toFixed(4) : "—"} />
+                                    <StatCard label="Average Score" value={avgScoreBackend != null ? avgScoreBackend.toFixed(4) : avgScore}
+                                        sub={threshold != null ? (avgScoreBackend ?? parseFloat(avgScore)) > threshold ? "above threshold" : "below threshold" : undefined} />
+                                    <StatCard label="Peak Score" value={peakScoreBackend != null ? peakScoreBackend.toFixed(4) : maxScore}
+                                        highlight={peakScoreBackend != null && threshold != null && peakScoreBackend > threshold}
+                                        sub={threshold != null ? (peakScoreBackend ?? parseFloat(maxScore)) > threshold ? "above threshold ⚠" : "below threshold ✓" : undefined} />
                                 </div>
                             </div>
                         )}
@@ -718,34 +736,83 @@ const Detect = () => {
                             </div>
                         )}
 
-                        {/* ── Side-by-side ── */}
-                        {done && sortedByScore.length > 0 && Object.keys(originalFrames).length > 0 && (
+                        {/* ── Semantic Match & Heatmap Analysis ── */}
+                        {done && sortedByScore.length > 0 && (
                             <div className="w-full px-5 sm:px-10 py-14 border-b border-tan/10">
-                                <SectionHeader title="Original vs Anomaly" sub="Extracted original frame compared with the detection result" />
-                                <div className="space-y-12 max-w-5xl mx-auto">
-                                    {sortedByScore.slice(0, 10).map((fr) => originalFrames[fr.idx] && (
-                                        <div key={`cmp-${fr.idx}`}>
-                                            <p className="text-xs montserrat opacity-40 mb-4 text-center">
+                                <SectionHeader title="Semantic Match & Heatmap" sub="Finds the closest semantic normal frame and generates a spatial difference heatmap" />
+                                <div className="space-y-12 max-w-6xl mx-auto">
+                                    {sortedByScore.slice(0, 10).map((fr) => (
+                                        <div key={`analyze-${fr.idx}`} className="bg-slate-900/40 p-6 rounded-3xl border border-tan/10">
+                                            <p className="text-sm montserrat opacity-60 mb-6 text-center">
                                                 Frame #{fr.idx} · Score:&nbsp;
                                                 <span className="text-red-400 font-semibold">{fr.score.toFixed(4)}</span>
                                             </p>
-                                            <div className="flex flex-col md:flex-row gap-4 items-stretch">
-                                                <div className="flex-1 rounded-2xl overflow-hidden border border-green-500/30 bg-slate-900/30">
-                                                    <div className="relative">
-                                                        <img src={originalFrames[fr.idx]} alt="" className="w-full object-cover" />
-                                                        <div className="absolute top-3 right-3 bg-green-500/80 text-white text-[10px] font-bold montserrat px-3 py-1 rounded-full">ORIGINAL</div>
+                                            
+                                            {!analysisData[fr.idx] ? (
+                                                <div className="flex flex-col items-center justify-center">
+                                                    <div className="w-64 rounded-xl overflow-hidden mb-4 border border-red-500/30">
+                                                        <img src={`data:image/jpeg;base64,${fr.b64}`} alt="Anomaly" className="w-full" />
+                                                    </div>
+                                                    <button onClick={() => analyzeAnomaly(fr)}
+                                                        className="px-6 py-2.5 bg-tan text-oxford-blue text-xs font-semibold rounded-lg montserrat hover:scale-105 transition-transform cursor-pointer">
+                                                        Analyze Anomaly
+                                                    </button>
+                                                </div>
+                                            ) : analysisData[fr.idx].loading ? (
+                                                <div className="flex flex-col items-center justify-center py-10">
+                                                    <svg className="animate-spin text-tan mb-4" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                                        <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
+                                                    </svg>
+                                                    <span className="text-xs text-tan/60 montserrat animate-pulse">Running semantic search & generating heatmap...</span>
+                                                </div>
+                                            ) : analysisData[fr.idx].error ? (
+                                                <div className="text-center text-red-400 text-xs montserrat py-4">
+                                                    Error: {analysisData[fr.idx].error}
+                                                </div>
+                                            ) : (
+                                                <div className="flex flex-col md:flex-row gap-4 items-stretch justify-center">
+                                                    {/* Normal Frame Match */}
+                                                    <div className="flex-1 rounded-2xl overflow-hidden border border-green-500/30 bg-slate-900/30 flex flex-col">
+                                                        <div className="p-3 text-center border-b border-green-500/20 bg-green-900/10">
+                                                            <p className="text-[10px] montserrat font-semibold text-green-400 tracking-widest uppercase">Semantic Match (Normal)</p>
+                                                            <p className="text-[9px] montserrat opacity-50 mt-1">Matched Index: {analysisData[fr.idx].matchedIndex}</p>
+                                                        </div>
+                                                        <div className="relative flex-1">
+                                                            <img src={`data:image/jpeg;base64,${analysisData[fr.idx].normalFrame}`} alt="Normal match" className="w-full h-full object-cover" />
+                                                        </div>
+                                                    </div>
+                                                    
+                                                    <div className="hidden md:flex flex-col items-center justify-center px-4">
+                                                        <span className="text-2xl opacity-20 montserrat">→</span>
+                                                    </div>
+
+                                                    {/* Anomaly Frame */}
+                                                    <div className="flex-1 rounded-2xl overflow-hidden border border-red-500/50 bg-slate-900/30 flex flex-col">
+                                                        <div className="p-3 text-center border-b border-red-500/20 bg-red-900/10">
+                                                            <p className="text-[10px] montserrat font-semibold text-red-400 tracking-widest uppercase">Target Anomaly</p>
+                                                            <p className="text-[9px] montserrat opacity-50 mt-1">Frame: {fr.idx}</p>
+                                                        </div>
+                                                        <div className="relative flex-1">
+                                                            <img src={`data:image/jpeg;base64,${fr.b64}`} alt="Anomaly" className="w-full h-full object-cover" />
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="hidden md:flex flex-col items-center justify-center px-4">
+                                                        <span className="text-2xl opacity-20 montserrat">=</span>
+                                                    </div>
+
+                                                    {/* Heatmap */}
+                                                    <div className="flex-1 rounded-2xl overflow-hidden border border-amber-500/50 bg-slate-900/30 flex flex-col">
+                                                        <div className="p-3 text-center border-b border-amber-500/20 bg-amber-900/10">
+                                                            <p className="text-[10px] montserrat font-semibold text-amber-400 tracking-widest uppercase">Spatial Difference Heatmap</p>
+                                                            <p className="text-[9px] montserrat opacity-50 mt-1">Patch-level L2 Distance</p>
+                                                        </div>
+                                                        <div className="relative flex-1">
+                                                            <img src={`data:image/jpeg;base64,${analysisData[fr.idx].heatmap}`} alt="Heatmap" className="w-full h-full object-cover" />
+                                                        </div>
                                                     </div>
                                                 </div>
-                                                <div className="hidden md:flex items-center justify-center px-2">
-                                                    <span className="text-sm font-bold opacity-15 montserrat">VS</span>
-                                                </div>
-                                                <div className="flex-1 rounded-2xl overflow-hidden border border-red-500/50 bg-slate-900/30">
-                                                    <div className="relative">
-                                                        <img src={`data:image/jpeg;base64,${fr.b64}`} alt="" className="w-full object-cover" />
-                                                        <div className="absolute top-3 right-3 bg-red-500 text-white text-[10px] font-bold montserrat px-3 py-1 rounded-full">⚠ ANOMALY</div>
-                                                    </div>
-                                                </div>
-                                            </div>
+                                            )}
                                         </div>
                                     ))}
                                 </div>
