@@ -187,6 +187,7 @@ const Detect = () => {
                         case "frame": {
                             const f = {
                                 idx: data.frame_idx, score: data.score, isAnomaly: data.is_anomaly,
+                                currentThr: data.current_thr,
                                 temporal: data.temporal ?? 0, temporalLong: data.temporal_long ?? 0,
                                 spatial: data.spatial ?? 0, energy: data.energy ?? 0, uncertainty: data.uncertainty ?? 0,
                             };
@@ -202,6 +203,7 @@ const Detect = () => {
                             setDone(true); setTotalFrames(data.total_frames);
                             if (data.avg_score != null) setAvgScoreBackend(data.avg_score);
                             if (data.peak_score != null) setPeakScoreBackend(data.peak_score);
+                            if (data.final_threshold != null) setThreshold(data.final_threshold);
                             pushLog(`🏁 Inference complete — ${data.total_frames} frames processed.`); break;
                         case "error":
                             pushLog(`❌ ${data.msg}`);
@@ -366,7 +368,7 @@ const Detect = () => {
     const anomalyPct = frames.length ? ((anomalyFrames.length / frames.length) * 100).toFixed(1) : "—";
     const maxScore = frames.length ? Math.max(...frames.map((f) => f.score)).toFixed(4) : "—";
     const avgScore = frames.length ? (frames.reduce((s, f) => s + f.score, 0) / frames.length).toFixed(4) : "—";
-    const chartData = frames.map((f) => ({ frame: f.idx, score: parseFloat(f.score.toFixed(4)) }));
+    const chartData = frames.map((f) => ({ frame: f.idx, score: parseFloat(f.score.toFixed(4)), currentThr: f.currentThr != null ? parseFloat(f.currentThr.toFixed(4)) : null }));
     const sortedByScore = [...anomalyFrameImages].sort((a, b) => b.score - a.score);
     const wcChartData = wcFrames.map((f) => ({ frame: f.idx, score: parseFloat(f.score.toFixed(4)) }));
     const progressPct = progress && progress.total !== "?"
@@ -633,10 +635,10 @@ const Detect = () => {
                                                         <span className="opacity-40">Composite Score</span>
                                                         <span className={`font-semibold ${lastFrame.isAnomaly ? "text-red-400" : "text-green-400"}`}>{lastFrame.score.toFixed(4)}</span>
                                                     </div>
-                                                    {threshold !== null && (
+                                                    {(lastFrame.currentThr ?? threshold) !== null && (
                                                         <div className="flex justify-between text-sm montserrat">
-                                                            <span className="opacity-40">Calibrated Threshold</span>
-                                                            <span className="opacity-60">{threshold}</span>
+                                                            <span className="opacity-40">{thresholdMode === "dynamic_mean" ? "Current Threshold" : "Calibrated Threshold"}</span>
+                                                            <span className="opacity-60">{Number(lastFrame.currentThr ?? threshold).toFixed(4)}</span>
                                                         </div>
                                                     )}
                                                 </div>
@@ -655,7 +657,7 @@ const Detect = () => {
                                     <StatCard label="Total Frames" value={totalFrames} />
                                     <StatCard label="Anomaly Frames" value={anomalyFrames.length} highlight={anomalyFrames.length > 0} sub={`of ${totalFrames} frames`} />
                                     <StatCard label="Anomaly %" value={`${anomalyPct}%`} highlight={parseFloat(anomalyPct) > 10} />
-                                    <StatCard label="Calibrated Threshold" value={threshold != null ? Number(threshold).toFixed(4) : "—"} />
+                                    <StatCard label={thresholdMode === "dynamic_mean" ? "Final Threshold" : "Calibrated Threshold"} value={threshold != null ? Number(threshold).toFixed(4) : "—"} />
                                     <StatCard label="Average Score" value={avgScoreBackend != null ? avgScoreBackend.toFixed(4) : avgScore}
                                         sub={threshold != null ? (avgScoreBackend ?? parseFloat(avgScore)) > threshold ? "above threshold" : "below threshold" : undefined} />
                                     <StatCard label="Peak Score" value={peakScoreBackend != null ? peakScoreBackend.toFixed(4) : maxScore}
@@ -680,9 +682,12 @@ const Detect = () => {
                                                 <YAxis stroke="#475569" tick={{ fill: "#64748b", fontSize: 10 }}
                                                     label={{ value: "Score", angle: -90, position: "insideLeft", fill: "#64748b" }} />
                                                 <Tooltip content={<ChartTooltip />} />
-                                                {threshold !== null && (
+                                                {threshold !== null && thresholdMode !== "dynamic_mean" && (
                                                     <ReferenceLine y={threshold} stroke="#ef4444" strokeWidth={1.5} strokeDasharray="5 4"
                                                         label={{ value: "Threshold", fill: "#ef4444", fontSize: 10, position: "insideTopRight" }} />
+                                                )}
+                                                {thresholdMode === "dynamic_mean" && (
+                                                    <Line type="stepAfter" dataKey="currentThr" stroke="#ef4444" strokeWidth={1.5} strokeDasharray="5 4" dot={false} isAnimationActive={false} />
                                                 )}
                                                 <Line type="monotone" dataKey="score" stroke="#8884d8" strokeWidth={1.5} dot={false} activeDot={{ r: 4, fill: "#8884d8" }} />
                                             </LineChart>
