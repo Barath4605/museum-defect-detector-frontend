@@ -96,6 +96,7 @@ const Detect = () => {
     const [wcThresholdOvr, setWcThresholdOvr] = useState(0);
     const [wcFps, setWcFps] = useState(2);
     const [wcAnomalyCount, setWcAnomalyCount] = useState(0);
+    const [wcTransport, setWcTransport] = useState(null); // "ws" | "http"
 
     const inputRef = useRef(null);
     const logEndRef = useRef(null);
@@ -106,6 +107,7 @@ const Detect = () => {
     const canvasRef = useRef(null);
     const intervalRef = useRef(null);
     const pendingRef = useRef(false);
+    const sessionIdRef = useRef(null);
 
     useEffect(() => {
         return () => { stopWebcam(); if (videoURL) URL.revokeObjectURL(videoURL); };
@@ -257,12 +259,108 @@ const Detect = () => {
         if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
         if (wsRef.current) { try { wsRef.current.send("stop"); } catch (_) { } wsRef.current.close(); wsRef.current = null; }
         if (streamRef.current) { streamRef.current.getTracks().forEach((t) => t.stop()); streamRef.current = null; }
-        setWcStatus("stopped"); pendingRef.current = false;
+        // Reset the HTTP session on the backend
+        if (sessionIdRef.current) {
+            const fd = new FormData(); fd.append("session_id", sessionIdRef.current);
+            fetch(`${BASE_URL}/api/webcam-reset`, { method: "POST", body: fd }).catch(() => {});
+            sessionIdRef.current = null;
+        }
+        setWcStatus("stopped"); pendingRef.current = false; setWcTransport(null);
     }, []);
+
+    // ── HTTP fallback: send frames via POST instead of WS ─────────────────────
+    const startHttpPolling = useCallback((stream) => {
+        const sid = `wc_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        sessionIdRef.current = sid;
+        setWcTransport("http");
+        setWcStatus("streaming");
+
+        // Fetch threshold from calibration-status
+        fetch(`${BASE_URL}/api/calibration-status`)
+            .then((r) => r.ok ? r.json() : null)
+            .then((d) => { if (d?.threshold) setWcThreshold(d.threshold); })
+            .catch(() => {});
+
+        const intervalMs = Math.round(1000 / wcFps);
+        intervalRef.current = setInterval(async () => {
+            if (pendingRef.current) return;
+            if (!webcamVideoRef.current || !canvasRef.current) return;
+
+            const vid = webcamVideoRef.current;
+            const canvas = canvasRef.current;
+
+            if (vid.readyState < 2 || vid.videoWidth === 0 || vid.paused) return;
+
+            canvas.width = vid.videoWidth;
+            canvas.height = vid.videoHeight;
+            const ctx = canvas.getContext("2d");
+            ctx.drawImage(vid, 0, 0, canvas.width, canvas.height);
+
+            const sample = ctx.getImageData(Math.floor(canvas.width / 2), Math.floor(canvas.height / 2), 1, 1).data;
+            if (sample[3] === 0) return;
+
+            pendingRef.current = true;
+
+            canvas.toBlob(async (blob) => {
+                if (!blob) { pendingRef.current = false; return; }
+                try {
+                    const fd = new FormData();
+                    fd.append("frame", blob, "frame.jpg");
+                    fd.append("session_id", sid);
+                    if (wcThresholdOvr > 0) fd.append("threshold_override", wcThresholdOvr);
+
+                    const resp = await fetch(`${BASE_URL}/api/webcam-frame`, { method: "POST", body: fd });
+                    if (!resp.ok) {
+                        const errText = await resp.text();
+                        setWcError(`Server error: ${errText}`);
+                        stopWebcam();
+                        return;
+                    }
+                    const data = await resp.json();
+
+                    if (data.threshold && !wcThresholdOvr) setWcThreshold(data.threshold);
+
+                    const entry = {
+                        idx: data.frame_idx, score: data.score, isAnomaly: data.is_anomaly,
+                        temporal: data.temporal ?? 0, temporalLong: data.temporal_long ?? 0,
+                        spatial: data.spatial ?? 0, energy: data.energy ?? 0, uncertainty: data.uncertainty ?? 0,
+                        b64: data.frame_b64,
+                    };
+                    setWcLastFrame(entry);
+                    if (entry.isAnomaly) setWcAnomalyCount((n) => n + 1);
+                    setWcFrames((prev) => { const next = [...prev, entry]; return next.length > 300 ? next.slice(-300) : next; });
+                } catch (err) {
+                    console.error("HTTP frame error:", err);
+                } finally {
+                    pendingRef.current = false;
+                }
+            }, "image/jpeg", 0.75);
+        }, intervalMs);
+    }, [wcFps, wcThresholdOvr, stopWebcam]);
 
     const startWebcam = useCallback(async () => {
         setWcError(null); setWcFrames([]); setWcLastFrame(null);
-        setWcAnomalyCount(0); setWcStatus("requesting");
+        setWcAnomalyCount(0); setWcStatus("requesting"); setWcTransport(null);
+
+        // Pre-check: is the model trained?
+        try {
+            const statusResp = await fetch(`${BASE_URL}/api/system-status`);
+            if (statusResp.ok) {
+                const st = await statusResp.json();
+                if (!st.temporal_trained || !st.spatial_trained) {
+                    setWcError("Model is not trained yet. Please complete training first.");
+                    setWcStatus("idle");
+                    return;
+                }
+                if (!st.calibrated) {
+                    setWcError("Model is not calibrated yet. Please run calibration first.");
+                    setWcStatus("idle");
+                    return;
+                }
+            }
+        } catch (_) {
+            // If status check fails, continue anyway — the WS/HTTP handler will catch it
+        }
 
         let stream;
         try {
@@ -277,10 +375,16 @@ const Detect = () => {
         if (webcamVideoRef.current) { webcamVideoRef.current.srcObject = stream; webcamVideoRef.current.play().catch(() => { }); }
         setWcStatus("connecting");
 
+        // Try WebSocket first, fall back to HTTP if it fails
         const ws = new WebSocket(WS_URL);
         wsRef.current = ws;
+        let wsOpened = false;
 
-        ws.onopen = () => { ws.send(JSON.stringify({ threshold_override: wcThresholdOvr })); };
+        ws.onopen = () => {
+            wsOpened = true;
+            setWcTransport("ws");
+            ws.send(JSON.stringify({ threshold_override: wcThresholdOvr }));
+        };
 
         ws.onmessage = (event) => {
             let data;
@@ -298,9 +402,6 @@ const Detect = () => {
                     const vid = webcamVideoRef.current;
                     const canvas = canvasRef.current;
 
-                    // ── FIX: guard against black/empty frames ──────────────────
-                    // readyState < 2 = no decoded frame yet (HAVE_CURRENT_DATA=2)
-                    // videoWidth === 0 = stream dimensions not known yet
                     if (vid.readyState < 2 || vid.videoWidth === 0 || vid.paused) return;
 
                     canvas.width  = vid.videoWidth;
@@ -308,10 +409,8 @@ const Detect = () => {
                     const ctx = canvas.getContext("2d");
                     ctx.drawImage(vid, 0, 0, canvas.width, canvas.height);
 
-                    // Skip if center pixel is fully transparent (canvas not yet painted)
                     const sample = ctx.getImageData(Math.floor(canvas.width / 2), Math.floor(canvas.height / 2), 1, 1).data;
                     if (sample[3] === 0) return;
-                    // ──────────────────────────────────────────────────────────
 
                     canvas.toBlob((blob) => {
                         if (!blob) return;
@@ -337,12 +436,25 @@ const Detect = () => {
             }
         };
 
-        ws.onerror = () => { setWcError("WebSocket connection failed. Make sure the model is trained and calibrated."); stopWebcam(); };
-        ws.onclose = () => {
-            if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
-            setWcStatus((s) => s === "streaming" ? "stopped" : s);
+        ws.onerror = () => {
+            // WebSocket failed — fall back to HTTP polling mode
+            if (!wsOpened) {
+                console.warn("WebSocket unavailable, falling back to HTTP polling mode.");
+                wsRef.current = null;
+                startHttpPolling(stream);
+            } else {
+                setWcError("WebSocket connection lost unexpectedly.");
+                stopWebcam();
+            }
         };
-    }, [wcThresholdOvr, wcFps, stopWebcam]);
+        ws.onclose = () => {
+            // Only clean up if WS was still the active transport (not if we fell back to HTTP)
+            if (wsRef.current === ws) {
+                if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
+                setWcStatus((s) => s === "streaming" ? "stopped" : s);
+            }
+        };
+    }, [wcThresholdOvr, wcFps, stopWebcam, startHttpPolling]);
 
     useEffect(() => {
         if (mode === "webcam" && wcThreshold === null) {
@@ -376,7 +488,9 @@ const Detect = () => {
 
     const wcStatusLabel = {
         idle: null, requesting: "Requesting camera…",
-        connecting: "Connecting to server…", streaming: "🔴 Live", stopped: "Stream stopped",
+        connecting: "Connecting to server…",
+        streaming: wcTransport === "http" ? "🔴 Live (HTTP)" : "🔴 Live (WebSocket)",
+        stopped: "Stream stopped",
     }[wcStatus];
 
     return (
