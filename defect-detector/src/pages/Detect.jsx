@@ -365,7 +365,7 @@ const Detect = () => {
         let stream;
         try {
             stream = await navigator.mediaDevices.getUserMedia({
-                video: { width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 30 } }, audio: false,
+                video: { facingMode: { ideal: "environment" }, width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 30 } }, audio: false,
             });
         } catch (err) {
             setWcError(`Camera access denied: ${err.message}`); setWcStatus("idle"); return;
